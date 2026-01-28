@@ -59,26 +59,28 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                 number(&mut tokens, &mut chars);
             }
             // Handle keywords
-            't' => {
-                for _ in 0..4 {
-                    chars.next();
+            't' | 'f' | 'n' => {
+                let mut word = String::new();
+                while let Some(&next_c) = chars.peek() {
+                    if next_c.is_alphabetic() {
+                        word.push(next_c);
+                        chars.next();
+                    } else {
+                        break;
+                    }
                 }
-                tokens.push(Token::Boolean(true));
-            }
-            'f' => {
-                for _ in 0..5 {
-                    chars.next();
+
+                match word.as_str() {
+                    "true" => tokens.push(Token::Boolean(true)),
+                    "false" => tokens.push(Token::Boolean(false)),
+                    "null" => tokens.push(Token::Null),
+                    // TODO: handle unknown keyword with explicit error handling
+                    _ => println!("Unknown keyword: {word}"),
                 }
-                tokens.push(Token::Boolean(false));
             }
-            'n' => {
-                for _ in 0..4 {
-                    chars.next();
-                }
-                tokens.push(Token::Null);
-            }
-            // Ignore unknown characters
+            // TODO: handle unknown characters with explicit error handling
             _ => {
+                println!("Unknown character: '{c}'");
                 chars.next();
             }
         }
@@ -114,6 +116,7 @@ fn number(tokens: &mut Vec<Token>, chars: &mut Peekable<Chars>) {
         }
     }
 
+    // TODO: Handle a failed parse, don't silently ignore it
     if let Ok(num) = number.parse::<f64>() {
         tokens.push(Token::Number(num));
     }
