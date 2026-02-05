@@ -1,37 +1,40 @@
-use rust_json_parser::{Result, parse_json, tokenize};
+use rust_json_parser::{JsonValue, Result, parse_json, tokenize};
 
-fn main() -> Result<()> {
+fn main() {
+    // Example 1: A JSON Object (Expected to fail with current implementation)
     let json1 = r#"{"name": "Alice", "age": 30}"#;
-    let tokens = tokenize(json1)?;
-    println!("Input JSON: {json1}");
-    println!("Tokens:");
-    for token in &tokens {
-        println!("{:?}", token);
+    println!("=== Processing Example 1 (Complex Object) ===");
+    if let Err(e) = process_json_example(json1) {
+        eprintln!("Status: Expected Error - {e}");
     }
-    println!();
 
-    // Since the current implementation only handles the first token,
-    // use a string for a successful parse.
+    println!("\n");
+
+    // Example 2: A JSON String (Expected to succeed)
     let json2 = r#""Hello, Rust!""#;
+    println!("=== Processing Example 2 (Primitive String) ===");
+    if let Err(e) = process_json_example(json2) {
+        eprintln!("Status: Unexpected Error - {e}");
+    }
+}
 
-    // 1. Tokenize
-    let tokens = tokenize(json2)?;
-    println!("--- Tokenizing Stage ---");
-    println!("Input JSON: {json2}");
-    println!("Tokens: {:?}\n", tokens);
+fn process_json_example(input: &str) -> Result<()> {
+    // Tokenize
+    let tokens = tokenize(input)?;
+    println!("Input: {input}");
+    println!("Tokens: {tokens:?}");
 
-    // 2. Parse
-    println!("--- Parsing Stage ---");
-    let value = parse_json(json2)?;
+    // Parse
+    let value = parse_json(input)?;
 
+    // Display Result
     match &value {
-        rust_json_parser::JsonValue::String(s) => println!("Parsed a String: {}", s),
-        rust_json_parser::JsonValue::Number(n) => println!("Parsed a Number: {}", n),
-        rust_json_parser::JsonValue::Boolean(b) => println!("Parsed a Boolean: {}", b),
-        rust_json_parser::JsonValue::Null => println!("Parsed a Null value"),
+        JsonValue::String(s) => println!("Result: Parsed a String -> {s}"),
+        JsonValue::Number(n) => println!("Result: Parsed a Number -> {n}"),
+        JsonValue::Boolean(b) => println!("Result: Parsed a Boolean -> {b}"),
+        JsonValue::Null => println!("Result: Parsed a Null value"),
     }
 
-    println!("\nFinal JsonValue debug output:");
-    println!("{:?}", value);
+    println!("Debug Value: {value:?}");
     Ok(())
 }

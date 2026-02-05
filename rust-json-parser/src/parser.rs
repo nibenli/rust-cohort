@@ -24,7 +24,7 @@ pub fn parse_json(input: &str) -> Result<JsonValue> {
         // they are technically "unexpected" for a single-token parser.
         t => Err(JsonError::UnexpectedToken {
             expected: "primitive JSON value".to_string(),
-            found: format!("{:?}", t),
+            found: format!("{t:?}"),
             position: 0, // In a full parser, you'd track the actual position
         }),
     }

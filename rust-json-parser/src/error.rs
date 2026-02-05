@@ -25,23 +25,17 @@ impl fmt::Display for JsonError {
             } => {
                 write!(
                     f,
-                    "Unexpected token at position {}: expected {}, found {}",
-                    position, expected, found
+                    "Unexpected token at position {position}: expected {expected}, found {found}"
                 )
             }
             JsonError::UnexpectedEndOfInput { expected, position } => {
                 write!(
                     f,
-                    "Unexpected end of input at position {}: expected {}",
-                    position, expected
+                    "Unexpected end of input at position {position}: expected {expected}"
                 )
             }
             JsonError::InvalidNumber { value, position } => {
-                write!(
-                    f,
-                    "Invalid number at position {}: value {}",
-                    position, value
-                )
+                write!(f, "Invalid number at position {position}: value {value}")
             }
         }
     }
