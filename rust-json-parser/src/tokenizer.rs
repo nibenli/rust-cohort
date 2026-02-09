@@ -1,5 +1,4 @@
 use crate::{JsonError, Result};
-use std::{iter::Peekable, str::CharIndices};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -17,45 +16,61 @@ pub enum Token {
 
 pub fn tokenize(input: &str) -> Result<Vec<Token>> {
     let mut tokens = Vec::new();
-    let mut chars = input.char_indices().peekable();
+    let mut pos = 0;
 
-    while let Some(&(pos, c)) = chars.peek() {
+    while pos < input.len() {
+        // Create a slice of the remaining string
+        let remaining = &input[pos..];
+
+        let mut chars = remaining.chars();
+        let c = match chars.next() {
+            Some(c) => c,
+            None => break,
+        };
+
         match c {
             c if c.is_whitespace() => {
-                chars.next();
+                pos += c.len_utf8();
             }
             '{' => {
-                chars.next();
                 tokens.push(Token::LeftBrace);
+                pos += c.len_utf8();
             }
             '}' => {
-                chars.next();
                 tokens.push(Token::RightBrace);
+                pos += c.len_utf8();
             }
             '[' => {
-                chars.next();
                 tokens.push(Token::LeftBracket);
+                pos += c.len_utf8();
             }
             ']' => {
-                chars.next();
                 tokens.push(Token::RightBracket);
+                pos += c.len_utf8();
             }
             ',' => {
-                chars.next();
                 tokens.push(Token::Comma);
+                pos += c.len_utf8();
             }
             ':' => {
-                chars.next();
                 tokens.push(Token::Colon);
+                pos += c.len_utf8();
             }
             '"' => {
-                tokens.push(string(&mut chars, pos)?);
+                // PASSING ONLY THE REMAINING SLICE
+                let (token, consumed) = string(remaining, pos)?;
+                tokens.push(token);
+                pos += consumed;
             }
             '-' | '0'..='9' => {
-                tokens.push(number(&mut chars, pos)?);
+                let (token, consumed) = number(remaining, pos)?;
+                tokens.push(token);
+                pos += consumed;
             }
             't' | 'f' | 'n' => {
-                tokens.push(keyword(&mut chars, pos)?);
+                let (token, consumed) = keyword(remaining, pos)?;
+                tokens.push(token);
+                pos += consumed;
             }
             _ => {
                 return Err(JsonError::UnexpectedToken {
@@ -69,32 +84,32 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
     Ok(tokens)
 }
 
-// Helper: Handle Strings
-fn string(chars: &mut Peekable<CharIndices>, start_pos: usize) -> Result<Token> {
-    chars.next(); // Consume "
+// Helper: Handle Strings, takes a slice, returns (Token, Bytes Consumed)
+fn string(input: &str, start_pos: usize) -> Result<(Token, usize)> {
+    let mut chars = input.char_indices();
+    chars.next(); // Consume opening quote (")
+
     let mut extracted_str = String::new();
 
-    while let Some(&(pos, nc)) = chars.peek() {
-        match nc {
+    for (local_pos, c) in chars {
+        match c {
             '"' => {
-                chars.next();
-                return Ok(Token::String(extracted_str));
+                // Return the token and the total bytes used (local_pos + closing quote size)
+                return Ok((Token::String(extracted_str), local_pos + 1));
             }
             '\\' => {
-                //TODO: Implement the logic to support escape sequences and unicode escapes
-                // Placeholder for escape sequence support next week
                 return Err(JsonError::UnexpectedToken {
-                    expected: "plain string character".to_string(),
-                    found: "unsupported escape sequence".to_string(),
-                    position: pos,
+                    expected: "plain character".to_string(),
+                    found: "unsupported escape sequence ('\\')".to_string(),
+                    position: start_pos + local_pos,
                 });
             }
             _ => {
-                extracted_str.push(nc);
-                chars.next();
+                extracted_str.push(c);
             }
         }
     }
+
     Err(JsonError::UnexpectedEndOfInput {
         expected: "\"".to_string(),
         position: start_pos,
@@ -102,46 +117,57 @@ fn string(chars: &mut Peekable<CharIndices>, start_pos: usize) -> Result<Token> 
 }
 
 // Helper: Handle Numbers
-fn number(chars: &mut Peekable<CharIndices>, start_pos: usize) -> Result<Token> {
+fn number(input: &str, global_pos: usize) -> Result<(Token, usize)> {
+    let mut bytes_consumed = 0;
     let mut num_str = String::new();
-    while let Some(&(_, c)) = chars.peek() {
+
+    for c in input.chars() {
         if c.is_ascii_digit() || c == '.' || c == '-' || c == 'e' || c == 'E' || c == '+' {
             num_str.push(c);
-            chars.next();
+            bytes_consumed += c.len_utf8();
         } else {
             break;
         }
     }
-    num_str
+
+    let val = num_str
         .parse::<f64>()
-        .map(Token::Number)
         .map_err(|_| JsonError::InvalidNumber {
             value: num_str,
-            position: start_pos,
-        })
+            position: global_pos,
+        })?;
+
+    Ok((Token::Number(val), bytes_consumed))
 }
 
 // Helper: Handle Keywords
-fn keyword(chars: &mut Peekable<CharIndices>, start_pos: usize) -> Result<Token> {
+fn keyword(input: &str, global_pos: usize) -> Result<(Token, usize)> {
+    let mut bytes_consumed = 0;
     let mut word = String::new();
-    while let Some(&(_, next_c)) = chars.peek() {
-        if next_c.is_alphabetic() {
-            word.push(next_c);
-            chars.next();
+
+    for c in input.chars() {
+        if c.is_alphabetic() {
+            word.push(c);
+            bytes_consumed += c.len_utf8();
         } else {
             break;
         }
     }
-    match word.as_str() {
-        "true" => Ok(Token::Boolean(true)),
-        "false" => Ok(Token::Boolean(false)),
-        "null" => Ok(Token::Null),
-        _ => Err(JsonError::UnexpectedToken {
-            expected: "keyword".to_string(),
-            found: word,
-            position: start_pos,
-        }),
-    }
+
+    let token = match word.as_str() {
+        "true" => Token::Boolean(true),
+        "false" => Token::Boolean(false),
+        "null" => Token::Null,
+        _ => {
+            return Err(JsonError::UnexpectedToken {
+                expected: "keyword".to_string(),
+                found: word,
+                position: global_pos,
+            });
+        }
+    };
+
+    Ok((token, bytes_consumed))
 }
 
 #[cfg(test)]
@@ -306,6 +332,16 @@ mod tests {
             assert!(tokens.is_ok());
             let unwrapped_tokens = tokens.unwrap();
             assert_eq!(unwrapped_tokens.len(), 10);
+        }
+
+        #[test]
+        fn test_multibyte_whitespace() {
+            let input = "{\u{3000}}";
+            let tokens = tokenize(input);
+            assert!(tokens.is_ok());
+            let unwrapped_tokens = tokens.unwrap();
+
+            assert_eq!(unwrapped_tokens, vec![Token::LeftBrace, Token::RightBrace]);
         }
     }
     // --- Error Handling Tests ---
