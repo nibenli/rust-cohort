@@ -1,4 +1,4 @@
-use rust_json_parser::{JsonValue, Result, parse_json, tokenize};
+use rust_json_parser::{JsonParser, JsonValue, Result, Tokenizer};
 
 fn main() {
     // Example 1: A JSON Object (Expected to fail with current implementation)
@@ -20,12 +20,12 @@ fn main() {
 
 fn process_json_example(input: &str) -> Result<()> {
     // Tokenize
-    let tokens = tokenize(input)?;
+    let tokens = Tokenizer::new(input).tokenize()?;
     println!("Input: {input}");
     println!("Tokens: {tokens:?}");
 
     // Parse
-    let value = parse_json(input)?;
+    let value = JsonParser::new(input)?.parse()?;
 
     // Display Result
     match &value {
