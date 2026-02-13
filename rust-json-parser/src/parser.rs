@@ -1,4 +1,3 @@
-// Week 2: Simple parser for primitive JSON values
 use crate::{JsonError, JsonValue, Result, Token, Tokenizer};
 
 #[derive(Debug)]
@@ -16,14 +15,6 @@ impl JsonParser {
     }
 
     pub fn parse(&mut self) -> Result<JsonValue> {
-        // Check if it's at the end (empty input or fully consumed)
-        if self.is_at_end() {
-            return Err(JsonError::UnexpectedEndOfInput {
-                expected: "JSON value".to_string(),
-                position: self.current,
-            });
-        }
-
         // Get the next token with advance()
         let token = match self.advance() {
             Some(t) => t,

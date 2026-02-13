@@ -213,14 +213,6 @@ impl Tokenizer {
             }
         }
 
-        // Validate length
-        if hex_string.len() != Self::UNICODE_HEX_LEN {
-            return Err(JsonError::InvalidUnicode {
-                sequence: hex_string,
-                position: start_pos,
-            });
-        }
-
         // Convert Hex to u32, then to char
         let code_point =
             u32::from_str_radix(&hex_string, 16).map_err(|_| JsonError::InvalidUnicode {
