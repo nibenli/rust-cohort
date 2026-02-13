@@ -6,8 +6,8 @@ mod value;
 
 // Re-export for clean API
 pub use error::JsonError;
-pub use parser::parse_json;
-pub use tokenizer::{Token, tokenize};
+pub use parser::JsonParser;
+pub use tokenizer::{Token, Tokenizer};
 pub use value::JsonValue;
 
 // Convenience type alias
@@ -16,6 +16,10 @@ pub type Result<T> = std::result::Result<T, JsonError>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_json(input: &str) -> Result<JsonValue> {
+        JsonParser::new(input)?.parse()
+    }
     #[test]
     fn test_integration() {
         // Test the full parsing pipeline

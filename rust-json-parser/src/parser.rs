@@ -1,39 +1,136 @@
-// Week 2: Simple parser for primitive JSON values
-use crate::{JsonError, JsonValue, Result, Token, tokenize};
+use crate::{JsonError, JsonValue, Result, Token, Tokenizer};
 
-pub fn parse_json(input: &str) -> Result<JsonValue> {
-    // 1. Call tokenize(input)?
-    let tokens = tokenize(input)?;
+#[derive(Debug)]
+pub struct JsonParser {
+    tokens: Vec<Token>,
+    current: usize,
+}
 
-    // 2. Check if tokens is empty
-    if tokens.is_empty() {
-        return Err(JsonError::UnexpectedEndOfInput {
-            expected: "JSON value".to_string(),
-            position: 0,
-        });
+impl JsonParser {
+    pub fn new(input: &str) -> Result<Self> {
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize()?;
+
+        Ok(Self { tokens, current: 0 })
     }
 
-    // 3. Match on tokens[0] and convert to JsonValue
-    match &tokens[0] {
-        Token::String(s) => Ok(JsonValue::String(s.clone())),
-        Token::Number(n) => Ok(JsonValue::Number(*n)),
-        Token::Boolean(b) => Ok(JsonValue::Boolean(*b)),
-        Token::Null => Ok(JsonValue::Null),
-        // Handle other token types...
-        // If we hit structural tokens like { or [ without further logic,
-        // they are technically "unexpected" for a single-token parser.
-        t => Err(JsonError::UnexpectedToken {
-            expected: "primitive JSON value".to_string(),
-            found: format!("{t:?}"),
-            position: 0, // In a full parser, you'd track the actual position
-        }),
+    pub fn parse(&mut self) -> Result<JsonValue> {
+        // Get the next token with advance()
+        let token = match self.advance() {
+            Some(t) => t,
+            None => {
+                return Err(JsonError::UnexpectedEndOfInput {
+                    expected: "JSON value".to_string(),
+                    position: self.current,
+                });
+            }
+        };
+
+        // Match on the token type and convert to the corresponding JsonValue
+        match token {
+            Token::String(s) => Ok(JsonValue::String(s)),
+            Token::Number(n) => Ok(JsonValue::Number(n)),
+            Token::Boolean(b) => Ok(JsonValue::Boolean(b)),
+            Token::Null => Ok(JsonValue::Null),
+            // Handle unexpected tokens
+            t => Err(JsonError::UnexpectedToken {
+                expected: "primitive JSON value".to_string(),
+                found: format!("{t:?}"),
+                position: self.current - 1,
+            }),
+        }
+    }
+
+    // --- Private Helper Methods ---
+    /// Consumes and returns the current token, advancing the internal cursor.
+    fn advance(&mut self) -> Option<Token> {
+        if !self.is_at_end() {
+            let token = self.tokens[self.current].clone();
+            self.current += 1;
+            Some(token)
+        } else {
+            None
+        }
+    }
+
+    /// Checks if the parser has run out of tokens.
+    pub fn is_at_end(&self) -> bool {
+        self.current >= self.tokens.len()
     }
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
+    // Helper
+    fn parse_json(input: &str) -> Result<JsonValue> {
+        JsonParser::new(input)?.parse()
+    }
+
+    mod parser_creation {
+        use super::*;
+
+        #[test]
+        fn test_parser_creation() {
+            let parser = JsonParser::new("42");
+            assert!(parser.is_ok());
+        }
+        #[test]
+        fn test_parser_creation_tokenize_error() {
+            let result = JsonParser::new(r#""\q""#);
+            assert!(result.is_err());
+            match result {
+                Err(JsonError::InvalidEscape {
+                    character,
+                    position,
+                }) => {
+                    assert_eq!(character, 'q');
+                    assert_eq!(position, 1);
+                }
+                _ => panic!("Expected InvalidEscape error, got {:?}", result),
+            }
+        }
+    }
+
+    mod parser_state_transitions {
+        use super::*;
+
+        #[test]
+        fn test_successful_consumption_state() {
+            // Initial State: Created but not parsed
+            let mut parser = JsonParser::new("true").unwrap();
+            assert!(
+                !parser.is_at_end(),
+                "Parser should not be at end before parsing"
+            );
+
+            // Transition: Parse the value
+            let result = parser.parse();
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), JsonValue::Boolean(true));
+
+            // Final State: Fully consumed
+            assert!(
+                parser.is_at_end(),
+                "Parser should be at end after consuming the only token"
+            );
+        }
+
+        #[test]
+        fn test_repeated_parse_calls_exhaustion() {
+            let mut parser = JsonParser::new("null").unwrap();
+
+            // Consume the only token
+            let _ = parser.parse();
+
+            // Any subsequent calls to parse should transition to an Error state (EndOfInput)
+            let second_call = parser.parse();
+            match second_call {
+                Err(JsonError::UnexpectedEndOfInput { .. }) => {}
+                _ => panic!("Expected UnexpectedEndOfInput error on exhausted parser"),
+            }
+        }
+    }
 
     mod success_cases {
         use super::*;
@@ -82,6 +179,45 @@ mod tests {
         }
     }
 
+    mod escape_sequences {
+        use super::*;
+
+        #[test]
+        fn test_parse_string_with_newline() {
+            let mut parser = JsonParser::new(r#""hello\nworld""#).unwrap();
+            let value = parser.parse().unwrap();
+            assert_eq!(value, JsonValue::String("hello\nworld".to_string()));
+        }
+
+        #[test]
+        fn test_parse_string_with_tab() {
+            let mut parser = JsonParser::new(r#""col1\tcol2""#).unwrap();
+            let value = parser.parse().unwrap();
+            assert_eq!(value, JsonValue::String("col1\tcol2".to_string()));
+        }
+        #[test]
+        fn test_parse_string_with_quotes() {
+            let mut parser = JsonParser::new(r#""say \"hi\"""#).unwrap();
+            let value = parser.parse().unwrap();
+            assert_eq!(value, JsonValue::String("say \"hi\"".to_string()));
+        }
+        #[test]
+        fn test_parse_string_with_unicode() {
+            let mut parser = JsonParser::new(r#""\u0048\u0065\u006c\u006c\u006f""#).unwrap();
+            let value = parser.parse().unwrap();
+            assert_eq!(value, JsonValue::String("Hello".to_string()));
+        }
+        #[test]
+        fn test_parse_complex_escapes() {
+            let mut parser = JsonParser::new(r#""line1\nline2\t\"quoted\"\u0021""#).unwrap();
+            let value = parser.parse().unwrap();
+            assert_eq!(
+                value,
+                JsonValue::String("line1\nline2\t\"quoted\"!".to_string())
+            );
+        }
+    }
+
     mod error_cases {
         use super::*;
 
@@ -122,6 +258,12 @@ mod tests {
                     input
                 );
             }
+        }
+
+        #[test]
+        fn test_parse_whitespace_only() {
+            let parser = JsonParser::new("   ");
+            assert!(parser.is_err() || parser.unwrap().parse().is_err());
         }
     }
 }
