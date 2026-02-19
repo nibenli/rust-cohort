@@ -59,39 +59,67 @@ impl JsonValue {
     }
 }
 
+trait JsonFormat {
+    fn write_json(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+}
+
+impl JsonFormat for String {
+    fn write_json(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", escape_json_string(self))
+    }
+}
+
+impl JsonFormat for f64 {
+    fn write_json(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl JsonFormat for bool {
+    fn write_json(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+// Arrays
+impl JsonFormat for [JsonValue] {
+    fn write_json(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, val) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+
+            write!(f, "{val}")?;
+        }
+        write!(f, "]")
+    }
+}
+
+// Objects
+impl JsonFormat for HashMap<String, JsonValue> {
+    fn write_json(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{")?;
+        for (i, (key, val)) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            // Escape key and then format value
+            write!(f, "{}:{}", escape_json_string(key), val)?;
+        }
+        write!(f, "}}")
+    }
+}
+
 impl fmt::Display for JsonValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JsonValue::Null => write!(f, "null"),
-            JsonValue::Boolean(b) => write!(f, "{b}"),
-            JsonValue::Number(n) => {
-                // To match tests like "42.0" -> "42", use default formatting
-                write!(f, "{n}")
-            }
-            JsonValue::String(s) => {
-                write!(f, "{}", escape_json_string(s))
-            }
-            JsonValue::Array(arr) => {
-                write!(f, "[")?;
-                for (i, val) in arr.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ",")?;
-                    }
-                    write!(f, "{val}")?;
-                }
-                write!(f, "]")
-            }
-            JsonValue::Object(obj) => {
-                write!(f, "{{")?;
-                for (i, (key, val)) in obj.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ",")?;
-                    }
-                    // Keys in JSON are always strings and must be escaped
-                    write!(f, "{}:{}", escape_json_string(key), val)?;
-                }
-                write!(f, "}}")
-            }
+            JsonValue::Boolean(b) => b.write_json(f),
+            JsonValue::Number(n) => n.write_json(f),
+            JsonValue::String(s) => s.write_json(f),
+            JsonValue::Array(arr) => arr.as_slice().write_json(f),
+            JsonValue::Object(obj) => obj.write_json(f),
         }
     }
 }

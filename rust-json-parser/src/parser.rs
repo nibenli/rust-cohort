@@ -32,17 +32,19 @@ impl JsonParser {
     /// Handles Null, Boolean, Number, and String variants.
     fn parse_primitives(&mut self) -> Result<JsonValue> {
         if let Some(token) = self.advance() {
-            let pos = self.previous_pos();
             match token {
                 Token::Null => Ok(JsonValue::Null),
                 Token::Boolean(b) => Ok(JsonValue::Boolean(b)),
                 Token::Number(n) => Ok(JsonValue::Number(n)),
                 Token::String(s) => Ok(JsonValue::String(s)),
-                t => Err(JsonError::UnexpectedToken {
-                    expected: "value".to_string(),
-                    found: format!("{t:?}"),
-                    position: pos,
-                }),
+                t => {
+                    let pos = self.previous_pos();
+                    Err(JsonError::UnexpectedToken {
+                        expected: "value".to_string(),
+                        found: format!("{t:?}"),
+                        position: pos,
+                    })
+                }
             }
         } else {
             Err(JsonError::UnexpectedEndOfInput {
