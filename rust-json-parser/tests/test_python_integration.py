@@ -23,6 +23,14 @@ class TestBasicParsing:
         assert result["arr"] == [1.0, 2.0]
         assert result["obj"] == {}
 
+    def test_parse_escaped_characters(self):
+        # Testing that Rust correctly decodes escapes into real characters
+        json_input = r'{"tabs": "a\tb", "newlines": "line1\nline2", "quotes": "He said \"Hi\""}'
+        result = parse_json(json_input)
+        assert result["tabs"] == "a\tb"
+        assert result["newlines"] == "line1\nline2"
+        assert result["quotes"] == 'He said "Hi"'
+
 
 class TestTypeConversions:
     def test_null_becomes_none(self):
@@ -66,3 +74,36 @@ class TestSerialization:
     def test_dumps_with_indent(self):
         result = dumps({"key": "value"}, indent=2)
         assert '\n' in result
+
+    def test_dumps_escaping(self):
+        # Testing that Rust correctly encodes special characters back into valid JSON
+        data = {
+            "quote": 'a " quote',
+            "backslash": "a \\ slash",
+            "control": "line1\nline2\ttab"
+        }
+        result = dumps(data)
+
+        # The output must contain the literal backslash escapes, not the raw characters
+        assert r'\"' in result
+        assert r'\\' in result
+        assert r'\n' in result
+        assert r'\t' in result
+
+    def test_dumps_roundtrip_complex_strings(self):
+        # The ultimate test: Parse -> Dump -> Parse again
+        original_str = "Double \" Quote, Backslash \\, Newline \n, Tab \t"
+        data = {"text": original_str}
+
+        # 1. Serialize
+        serialized = dumps(data)
+        # 2. Re-parse
+        parsed = parse_json(serialized)
+
+        assert parsed["text"] == original_str
+
+    def test_dumps_escaped_keys(self):
+        # Dictionary keys must also be escaped
+        data = {"key\nwith\nnewline": "value"}
+        result = dumps(data)
+        assert r"key\nwith\nnewline" in result

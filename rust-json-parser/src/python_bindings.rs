@@ -1,7 +1,7 @@
 use crate::{JsonError, JsonParser, JsonValue};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyBool, PyDict, PyList};
 use pyo3::{Bound, IntoPyObject, PyAny, PyErr};
 use std::collections::HashMap;
 
@@ -78,42 +78,25 @@ pub fn py_to_json_value(obj: &Bound<PyAny>) -> PyResult<JsonValue> {
     if obj.is_none() {
         return Ok(JsonValue::Null);
     }
-
     // Check for Boolean (MUST come before Number/f64)
-    if let Ok(b) = obj.extract::<bool>() {
-        return Ok(JsonValue::Boolean(b));
+    if let Some(val) = try_bool(obj) {
+        return Ok(val);
     }
-
     // Check for Number (f64)
-    if let Ok(n) = obj.extract::<f64>() {
-        return Ok(JsonValue::Number(n));
+    if let Some(val) = try_number(obj) {
+        return Ok(val);
     }
-
     // Check for String
-    if let Ok(s) = obj.extract::<String>() {
-        return Ok(JsonValue::String(s));
+    if let Some(val) = try_string(obj) {
+        return Ok(val);
     }
-
     // Check for List (recurse on elements)
-    if let Ok(list) = obj.cast::<PyList>() {
-        let mut arr = Vec::with_capacity(list.len());
-        for item in list.iter() {
-            // Recursive call for each element
-            arr.push(py_to_json_value(&item)?);
-        }
-        return Ok(JsonValue::Array(arr));
+    if let Some(val) = try_array(obj)? {
+        return Ok(val);
     }
-
     // Check for Dictionary (recurse on values)
-    if let Ok(dict) = obj.cast::<PyDict>() {
-        let mut map = HashMap::with_capacity(dict.len());
-        for (key, val) in dict.iter() {
-            // Keys must be strings in JSON
-            let key_str = key.extract::<String>()?;
-            // Recursive call for each value
-            map.insert(key_str, py_to_json_value(&val)?);
-        }
-        return Ok(JsonValue::Object(map));
+    if let Some(val) = try_object(obj)? {
+        return Ok(val);
     }
 
     // Unsupported type
@@ -135,47 +118,7 @@ pub fn dumps(obj: Bound<PyAny>, indent: Option<usize>) -> PyResult<String> {
         None => Ok(json_value.to_string()),
 
         // Pretty-print mode: use a recursive formatter
-        Some(n) => Ok(format_json_pretty(&json_value, n, 0)),
-    }
-}
-
-/// Helper function to handle recursive indentation
-fn format_json_pretty(val: &JsonValue, indent_size: usize, depth: usize) -> String {
-    let current_indent = " ".repeat(depth * indent_size);
-    let next_indent = " ".repeat((depth + 1) * indent_size);
-
-    match val {
-        JsonValue::Null => "null".to_string(),
-        JsonValue::Boolean(b) => b.to_string(),
-        JsonValue::Number(n) => n.to_string(),
-        JsonValue::String(s) => format!("\"{s}\""),
-
-        JsonValue::Array(arr) => {
-            if arr.is_empty() {
-                return "[]".to_string();
-            }
-            let mut parts = Vec::new();
-            for item in arr {
-                parts.push(format!(
-                    "{}{}",
-                    next_indent,
-                    format_json_pretty(item, indent_size, depth + 1)
-                ));
-            }
-            format!("[\n{}\n{}]", parts.join(",\n"), current_indent)
-        }
-
-        JsonValue::Object(obj) => {
-            if obj.is_empty() {
-                return "{}".to_string();
-            }
-            let mut parts = Vec::new();
-            for (key, value) in obj {
-                let formatted_val = format_json_pretty(value, indent_size, depth + 1);
-                parts.push(format!("{next_indent}\"{key}\": {formatted_val}"));
-            }
-            format!("{{\n{}\n{}}}", parts.join(",\n"), current_indent)
-        }
+        Some(n) => Ok(json_value.pretty_print(n)),
     }
 }
 
@@ -187,4 +130,50 @@ fn _rust_json_parser(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
     m.add("__version__", "0.1.0")?;
     Ok(())
+}
+
+// --- Helper Functions ---
+fn try_bool(obj: &Bound<PyAny>) -> Option<JsonValue> {
+    // check type explicitly because extract::<bool> can be loose
+    if obj.is_instance_of::<PyBool>() {
+        obj.extract::<bool>().ok().map(JsonValue::Boolean)
+    } else {
+        None
+    }
+}
+
+fn try_number(obj: &Bound<PyAny>) -> Option<JsonValue> {
+    // handles both ints and floats
+    obj.extract::<f64>().ok().map(JsonValue::Number)
+}
+
+fn try_string(obj: &Bound<PyAny>) -> Option<JsonValue> {
+    obj.extract::<String>().ok().map(JsonValue::String)
+}
+
+fn try_array(obj: &Bound<PyAny>) -> PyResult<Option<JsonValue>> {
+    if let Ok(list) = obj.cast::<PyList>() {
+        let mut arr = Vec::with_capacity(list.len());
+        for item in list.iter() {
+            arr.push(py_to_json_value(&item)?);
+        }
+        Ok(Some(JsonValue::Array(arr)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn try_object(obj: &Bound<PyAny>) -> PyResult<Option<JsonValue>> {
+    if let Ok(dict) = obj.cast::<PyDict>() {
+        let mut map = HashMap::with_capacity(dict.len());
+        for (key, val) in dict.iter() {
+            let key_str = key
+                .extract::<String>()
+                .map_err(|_| PyValueError::new_err("JSON object keys must be strings"))?;
+            map.insert(key_str, py_to_json_value(&val)?);
+        }
+        Ok(Some(JsonValue::Object(map)))
+    } else {
+        Ok(None)
+    }
 }
