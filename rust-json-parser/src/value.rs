@@ -57,6 +57,51 @@ impl JsonValue {
             _ => None,
         }
     }
+
+    /// Public entry point for pretty printing
+    pub fn pretty_print(&self, indent: usize) -> String {
+        self.format_json_pretty(indent, 0)
+    }
+
+    /// Helper function to handle recursive indentation
+    fn format_json_pretty(&self, indent_size: usize, depth: usize) -> String {
+        let current_indent = " ".repeat(depth * indent_size);
+        let next_indent = " ".repeat((depth + 1) * indent_size);
+
+        match self {
+            JsonValue::Null => "null".to_string(),
+            JsonValue::Boolean(b) => b.to_string(),
+            JsonValue::Number(n) => n.to_string(),
+            JsonValue::String(s) => format!("\"{s}\""),
+
+            JsonValue::Array(arr) => {
+                if arr.is_empty() {
+                    return "[]".to_string();
+                }
+                let mut parts = Vec::new();
+                for item in arr {
+                    parts.push(format!(
+                        "{}{}",
+                        next_indent,
+                        item.format_json_pretty(indent_size, depth + 1)
+                    ));
+                }
+                format!("[\n{}\n{}]", parts.join(",\n"), current_indent)
+            }
+
+            JsonValue::Object(obj) => {
+                if obj.is_empty() {
+                    return "{}".to_string();
+                }
+                let mut parts = Vec::new();
+                for (key, value) in obj {
+                    let formatted_val = value.format_json_pretty(indent_size, depth + 1);
+                    parts.push(format!("{next_indent}\"{key}\": {formatted_val}"));
+                }
+                format!("{{\n{}\n{}}}", parts.join(",\n"), current_indent)
+            }
+        }
+    }
 }
 
 trait JsonFormat {
