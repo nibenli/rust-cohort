@@ -1,5 +1,5 @@
 import pytest
-from rust_json_parser import parse_json, parse_json_file, dumps
+from rust_json_parser import parse_json, parse_json_file, dumps, benchmark_performance
 
 
 class TestBasicParsing:
@@ -107,3 +107,15 @@ class TestSerialization:
         data = {"key\nwith\nnewline": "value"}
         result = dumps(data)
         assert r"key\nwith\nnewline" in result
+
+
+class TestBenchmark:
+    def test_benchmark_returns_tuple(self):
+        """Verify benchmark_performance returns timing tuple with all three values."""
+        rust_time, python_json_time, simplejson_time = benchmark_performance('{"test": 1}')
+        assert isinstance(rust_time, float)
+        assert isinstance(python_json_time, float)
+        assert isinstance(simplejson_time, float)
+        assert rust_time > 0
+        assert python_json_time > 0
+        assert simplejson_time > 0

@@ -9,12 +9,50 @@ pub struct JsonParser {
 }
 
 impl JsonParser {
+    /// Creates a new parser instance by tokenizing the input string.
+    ///
+    /// It initializes a `Tokenizer` internally
+    /// and converts the raw characters into a stream of tokens.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use rust_json_parser::JsonParser;
+    /// let input = r#"{"key": 123}"#;
+    /// let parser = JsonParser::new(input).expect("Tokenization failed");
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`JsonError`] if the input contains lexically invalid characters
+    /// (e.g., an unclosed string or an invalid number format). Common errors include:
+    /// * [`JsonError::InvalidNumber`]
+    /// * [`JsonError::InvalidEscape`]
     pub fn new(input: &str) -> Result<Self> {
         let mut tokenizer = Tokenizer::new(input);
         let tokens = tokenizer.tokenize()?;
         Ok(Self { tokens, current: 0 })
     }
 
+    /// Parses a JSON string into a JsonValue.
+    ///
+    /// This function accepts any valid JSON string and returns the parsed
+    /// representation as a `JsonValue` enum.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rust_json_parser::JsonParser;
+    ///
+    /// // Parse into a JsonValue
+    /// let value = JsonParser::new(r#"{"key": "value"}"#)?.parse()?;
+    /// assert!(value.get("key").is_some());
+    /// # Ok::<(), rust_json_parser::JsonError>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `JsonError` if the input is not valid JSON.
     pub fn parse(&mut self) -> Result<JsonValue> {
         let token = self.peek().ok_or(JsonError::UnexpectedEndOfInput {
             expected: "JSON value".to_string(),
