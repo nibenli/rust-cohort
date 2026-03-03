@@ -1,29 +1,81 @@
 use crate::{JsonError, JsonValue, Result, Token, Tokenizer};
 use std::collections::HashMap;
 use std::mem::discriminant;
+use std::vec::IntoIter;
 
 #[derive(Debug)]
 pub struct JsonParser {
-    tokens: Vec<Token>,
-    current: usize,
+    tokens: IntoIter<Token>,
+    current_token: Option<Token>,
+    // Track the last position seen to provide context for EOF errors
+    last_known_pos: usize,
 }
 
 impl JsonParser {
+    const DEFAULT_COLLECTION_CAPACITY: usize = 8;
+
+    /// Creates a new parser instance by tokenizing the input string.
+    ///
+    /// It initializes a `Tokenizer` internally
+    /// and converts the raw characters into a stream of tokens.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use rust_json_parser::JsonParser;
+    /// let input = r#"{"key": 123}"#;
+    /// let parser = JsonParser::new(input).expect("Tokenization failed");
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`JsonError`] if the input contains lexically invalid characters
+    /// (e.g., an unclosed string or an invalid number format). Common errors include:
+    /// * [`JsonError::InvalidNumber`]
+    /// * [`JsonError::InvalidEscape`]
     pub fn new(input: &str) -> Result<Self> {
         let mut tokenizer = Tokenizer::new(input);
         let tokens = tokenizer.tokenize()?;
-        Ok(Self { tokens, current: 0 })
+
+        // Convert the Vec into an iterator
+        let mut iter = tokens.into_iter();
+        let first = iter.next();
+
+        Ok(Self {
+            tokens: iter,
+            current_token: first,
+            last_known_pos: 0,
+        })
     }
 
+    /// Parses a JSON string into a JsonValue.
+    ///
+    /// This function accepts any valid JSON string and returns the parsed
+    /// representation as a `JsonValue` enum.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rust_json_parser::JsonParser;
+    ///
+    /// // Parse into a JsonValue
+    /// let value = JsonParser::new(r#"{"key": "value"}"#)?.parse()?;
+    /// assert!(value.get("key").is_some());
+    /// # Ok::<(), rust_json_parser::JsonError>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `JsonError` if the input is not valid JSON.
     pub fn parse(&mut self) -> Result<JsonValue> {
         let token = self.peek().ok_or(JsonError::UnexpectedEndOfInput {
             expected: "JSON value".to_string(),
-            position: self.current,
+            position: self.last_known_pos,
         })?;
 
         match token {
-            Token::LeftBracket => self.parse_array(),
-            Token::LeftBrace => self.parse_object(),
+            Token::LeftBracket(_) => self.parse_array(),
+            Token::LeftBrace(_) => self.parse_object(),
             // All other tokens are treated as potential primitives
             _ => self.parse_primitives(),
         }
@@ -33,12 +85,12 @@ impl JsonParser {
     fn parse_primitives(&mut self) -> Result<JsonValue> {
         if let Some(token) = self.advance() {
             match token {
-                Token::Null => Ok(JsonValue::Null),
-                Token::Boolean(b) => Ok(JsonValue::Boolean(b)),
-                Token::Number(n) => Ok(JsonValue::Number(n)),
-                Token::String(s) => Ok(JsonValue::String(s)),
+                Token::Null(_) => Ok(JsonValue::Null),
+                Token::Boolean(b, _) => Ok(JsonValue::Boolean(b)),
+                Token::Number(n, _) => Ok(JsonValue::Number(n)),
+                Token::String(s, _) => Ok(JsonValue::String(s)),
                 t => {
-                    let pos = self.previous_pos();
+                    let pos = t.pos();
                     Err(JsonError::UnexpectedToken {
                         expected: "value".to_string(),
                         found: format!("{t:?}"),
@@ -49,45 +101,44 @@ impl JsonParser {
         } else {
             Err(JsonError::UnexpectedEndOfInput {
                 expected: "JSON value".to_string(),
-                position: self.current,
+                position: self.last_known_pos,
             })
         }
     }
 
     fn parse_array(&mut self) -> Result<JsonValue> {
         self.advance(); // Consume '['
-        let mut elements = Vec::new();
+        let mut elements = Vec::with_capacity(Self::DEFAULT_COLLECTION_CAPACITY);
 
-        if self.check(&Token::RightBracket) {
+        if self.check(&Token::RightBracket(0)) {
             self.advance();
             return Ok(JsonValue::Array(elements));
         }
 
         loop {
             elements.push(self.parse()?);
-
             match self.advance() {
-                Some(Token::Comma) => {
-                    if self.check(&Token::RightBracket) {
+                Some(Token::Comma(_)) => {
+                    if self.check(&Token::RightBracket(0)) {
                         return Err(JsonError::UnexpectedToken {
                             expected: "value".to_string(),
                             found: "']' (trailing comma)".to_string(),
-                            position: self.previous_pos(),
+                            position: self.last_known_pos,
                         });
                     }
                 }
-                Some(Token::RightBracket) => break,
+                Some(Token::RightBracket(_)) => break,
                 Some(t) => {
                     return Err(JsonError::UnexpectedToken {
                         expected: "',' or ']'".to_string(),
                         found: format!("{t:?}"),
-                        position: self.previous_pos(),
+                        position: t.pos(),
                     });
                 }
                 None => {
                     return Err(JsonError::UnexpectedEndOfInput {
                         expected: "']'".to_string(),
-                        position: self.current,
+                        position: self.last_known_pos,
                     });
                 }
             }
@@ -97,44 +148,44 @@ impl JsonParser {
 
     fn parse_object(&mut self) -> Result<JsonValue> {
         self.advance(); // Consume '{'
-        let mut map = HashMap::new();
+        let mut map = HashMap::with_capacity(Self::DEFAULT_COLLECTION_CAPACITY);
 
-        if self.check(&Token::RightBrace) {
+        if self.check(&Token::RightBrace(0)) {
             self.advance();
             return Ok(JsonValue::Object(map));
         }
 
         loop {
             let key = match self.advance() {
-                Some(Token::String(s)) => s,
+                Some(Token::String(s, _)) => s, // MOVES String ownership into 'key'
                 Some(t) => {
                     return Err(JsonError::UnexpectedToken {
                         expected: "string key".to_string(),
                         found: format!("{t:?}"),
-                        position: self.previous_pos(),
+                        position: t.pos(),
                     });
                 }
                 None => {
                     return Err(JsonError::UnexpectedEndOfInput {
                         expected: "string key".to_string(),
-                        position: self.current,
+                        position: self.last_known_pos,
                     });
                 }
             };
 
             match self.advance() {
-                Some(Token::Colon) => {}
+                Some(Token::Colon(_)) => {}
                 Some(t) => {
                     return Err(JsonError::UnexpectedToken {
                         expected: "':'".to_string(),
                         found: format!("{t:?}"),
-                        position: self.previous_pos(),
+                        position: t.pos(),
                     });
                 }
                 None => {
                     return Err(JsonError::UnexpectedEndOfInput {
                         expected: "':'".to_string(),
-                        position: self.current,
+                        position: self.last_known_pos,
                     });
                 }
             }
@@ -142,27 +193,27 @@ impl JsonParser {
             map.insert(key, self.parse()?);
 
             match self.advance() {
-                Some(Token::Comma) => {
-                    if self.check(&Token::RightBrace) {
+                Some(Token::Comma(_)) => {
+                    if self.check(&Token::RightBrace(0)) {
                         return Err(JsonError::UnexpectedToken {
                             expected: "string key".to_string(),
                             found: "'}' (trailing comma)".to_string(),
-                            position: self.previous_pos(),
+                            position: self.last_known_pos,
                         });
                     }
                 }
-                Some(Token::RightBrace) => break,
+                Some(Token::RightBrace(_)) => break,
                 Some(t) => {
                     return Err(JsonError::UnexpectedToken {
                         expected: "',' or '}'".to_string(),
                         found: format!("{t:?}"),
-                        position: self.previous_pos(),
+                        position: t.pos(),
                     });
                 }
                 None => {
                     return Err(JsonError::UnexpectedEndOfInput {
                         expected: "'}'".to_string(),
-                        position: self.current,
+                        position: self.last_known_pos,
                     });
                 }
             }
@@ -172,32 +223,26 @@ impl JsonParser {
 
     // --- Helpers ---
 
-    /// Returns the index of the token just consumed.
-    fn previous_pos(&self) -> usize {
-        self.current.saturating_sub(1)
-    }
-
     fn check(&self, expected: &Token) -> bool {
         self.peek()
             .is_some_and(|actual| discriminant(actual) == discriminant(expected))
     }
 
     fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.current)
+        self.current_token.as_ref()
     }
 
     fn advance(&mut self) -> Option<Token> {
-        if !self.is_at_end() {
-            let token = self.tokens[self.current].clone();
-            self.current += 1;
-            Some(token)
-        } else {
-            None
+        let current = self.current_token.take();
+        if let Some(ref t) = current {
+            self.last_known_pos = t.pos();
         }
+        self.current_token = self.tokens.next();
+        current
     }
 
     pub fn is_at_end(&self) -> bool {
-        self.current >= self.tokens.len()
+        self.current_token.is_none()
     }
 }
 
