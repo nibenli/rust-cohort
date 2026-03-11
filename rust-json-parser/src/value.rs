@@ -1,12 +1,66 @@
 use std::{collections::HashMap, fmt};
 
+/// Represents a JSON value.
+///
+/// JSON supports six types: null, boolean, number, string, array, and object.
+/// This enum provides a variant for each type, allowing type-safe handling
+/// of parsed JSON data.
+///
+/// # Examples
+///
+/// ### Pattern Matching
+/// Use Rust's `match` statement to safely handle different JSON types:
+/// ```rust
+/// use rust_json_parser::{JsonParser, JsonValue};
+///
+/// let value = JsonParser::new("42")?.parse()?;
+/// match value {
+///     JsonValue::Number(n) => println!("Got number: {n}"),
+///     _ => println!("Got something else"),
+/// }
+/// # Ok::<(), rust_json_parser::JsonError>(())
+/// ```
+///
+/// ### Manual Construction
+/// Build JSON structures manually using the enum variants:
+/// ```rust
+/// use rust_json_parser::JsonValue;
+/// use std::collections::HashMap;
+///
+/// let mut map = HashMap::new();
+/// map.insert("name".to_string(), JsonValue::String("Alice".to_string()));
+/// map.insert("active".to_string(), JsonValue::Boolean(true));
+///
+/// let user = JsonValue::Object(map);
+/// assert!(user.as_object().is_some());
+/// ```
+///
+/// ### Accessing Nested Data
+/// Use the helper methods like `get` and `as_*` to navigate the data:
+/// ```rust
+/// # use rust_json_parser::JsonValue;
+/// # use std::collections::HashMap;
+/// # let mut map = HashMap::new();
+/// # map.insert("version".to_string(), JsonValue::Number(1.0));
+/// # let root = JsonValue::Object(map);
+/// let version = root.get("version")
+///     .and_then(|v| v.as_f64());
+///
+/// assert_eq!(version, Some(1.0));
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonValue {
+    /// JSON null value, representing the absence of a value.
     Null,
+    /// JSON boolean (true or false).
     Boolean(bool),
+    /// JSON number, stored as a 64-bit float.
     Number(f64),
+    /// JSON string.
     String(String),
+    /// JSON array, an ordered list of values.
     Array(Vec<JsonValue>),
+    /// JSON object, a collection of key-value pairs.
     Object(HashMap<String, JsonValue>),
 }
 

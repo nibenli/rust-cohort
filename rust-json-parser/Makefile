@@ -3,8 +3,9 @@ PYTHON = $(shell [ -f $(VENV_BIN)/python ] && echo $(VENV_BIN)/python || echo py
 PYTEST = $(shell [ -f $(VENV_BIN)/pytest ] && echo $(VENV_BIN)/pytest || echo pytest)
 CARGO  = cargo
 MATURIN = $(shell [ -f $(VENV_BIN)/maturin ] && echo $(VENV_BIN)/maturin || echo maturin)
+PKG_NAME = rust_json_parser
 
-.PHONY: all develop test test-rust test-python build clean help
+.PHONY: all develop release test test-rust test-python build benchmark doc clean help
 
 all: develop
 
@@ -12,12 +13,16 @@ all: develop
 develop:
 	$(MATURIN) develop
 
+## Install/Update the extension in optimized mode (Essential for Benchmarking)
+release:
+	$(MATURIN) develop --release
+
 ## Run all tests (Rust and Python)
 test: test-rust test-python
 
 ## Run Rust unit tests (disabling python features for pure Rust testing)
 test-rust:
-	$(CARGO) test --no-default-features --lib
+	$(CARGO) test --no-default-features
 
 ## Run Python integration tests
 test-python:
@@ -39,6 +44,14 @@ run-string:
 run-pipe:
 	echo '{"test": 123}' | $(PYTHON) -m rust_json_parser
 
+## Run the performance comparison suite
+benchmark:
+	$(PYTHON) -m $(PKG_NAME) --benchmark
+
+## Generate Rust documentation and open in browser
+doc:
+	$(CARGO) doc --open --no-deps
+
 ## --- Utility ---
 
 clean:
@@ -50,6 +63,9 @@ clean:
 help:
 	@echo "Rust-JSON-Parser Management Commands:"
 	@echo "  make develop       Compile Rust and install extension"
+	@echo "  make release       Compile Rust (Optimized/Release) and install"
+	@echo "  make benchmark     Run performance suite (Python json vs Rust vs simplejson)"
+	@echo "  make doc           Generate and open project documentation"
 	@echo "  make test          Run both Rust and Python tests"
 	@echo "  make test-python   Run Python tests only (triggers develop)"
 	@echo "  make test-rust     Run Rust tests only"

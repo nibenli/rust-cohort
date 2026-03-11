@@ -1,4 +1,38 @@
-// Declare modules
+//! # Rust JSON Parser
+//!
+//! A high-performance, lightweight JSON parser written in Rust with optional
+//! Python bindings via PyO3.
+//!
+//! ## Features
+//! - **Fast Tokenization**: A handwritten lexer for efficient byte-stream scanning.
+//! - **Recursive Descent Parsing**: A clean, readable parser that handles nested objects and arrays.
+//! - **Strict Type Fidelity**: Ensures JSON types (Null, Bool, Number, String, Array, Object) map accurately.
+//! - **Detailed Error Reporting**: Returns exact positions and expected vs. found tokens.
+//! - **Python Integration**: Built-in support for `maturin` to provide a native Python module.
+//! - **Performance Benchmarking**: Built-in tools to compare Rust against Python's `json` and `simplejson`
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use rust_json_parser::JsonParser;
+//!
+//! // Input string
+//! let input = r#"{"name": "Alice", "age": 30}"#;
+//!
+//! // Parse into a JsonValue
+//! let value = JsonParser::new(input)?.parse()?;
+//!
+//! // Access data with the helper methods
+//! if let Some(name) = value.get("name").and_then(|v| v.as_str()) {
+//!     println!("Found user: {}", name);
+//! }
+//!
+//! // Pretty print with 4-space indentation
+//! let output = value.pretty_print(4);
+//! println!("{output}");
+//! # Ok::<(), rust_json_parser::JsonError>(())
+//! ```
+
 mod error;
 mod parser;
 mod tokenizer;

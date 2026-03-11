@@ -1,27 +1,59 @@
 use std::fmt;
+
+/// Errors that can occur during the JSON parsing process.
+///
+/// This enum covers failures ranging from lexical issues (invalid numbers)
+/// to structural issues (unexpected tokens or early end-of-file).
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonError {
+    /// An unexpected character or token was encountered.
+    ///
+    /// This error occurs when the parser expects a specific structural element
+    /// (like a `:` after a key or a `,` between array items) but finds something else.
+    ///
+    /// ### Example
+    /// Parsing `{"key" "value"}` (missing colon) results in an `UnexpectedToken`.
     UnexpectedToken {
         expected: String,
         found: String,
         position: usize,
     },
-    UnexpectedEndOfInput {
-        expected: String,
-        position: usize,
-    },
-    InvalidNumber {
-        value: String,
-        position: usize,
-    },
-    InvalidEscape {
-        character: char,
-        position: usize,
-    },
-    InvalidUnicode {
-        sequence: String,
-        position: usize,
-    },
+
+    /// The input ended before the JSON structure was complete.
+    ///
+    /// This occurs when brackets, braces, or quotes are left unclosed at the
+    /// end of the string.
+    ///
+    /// ### Example
+    /// Parsing `{"name": "Alice"` (missing closing brace) results in `UnexpectedEndOfInput`.
+    UnexpectedEndOfInput { expected: String, position: usize },
+
+    /// A sequence of characters intended to be a number could not be parsed.
+    ///
+    /// This occurs if a number has multiple decimal points, an invalid exponent,
+    /// or leading zeros in a way that violates the JSON specification.
+    ///
+    /// ### Example
+    /// Parsing `1.2.3` or `0123` (leading zeros are invalid in JSON) results in `InvalidNumber`.
+    InvalidNumber { value: String, position: usize },
+
+    /// An invalid escape sequence was found inside a string.
+    ///
+    /// JSON strings only support specific escape characters like `\n`, `\t`, `\"`, etc.
+    /// Using a backslash followed by an unsupported character triggers this error.
+    ///
+    /// ### Example
+    /// Parsing `"hello \z"` results in `InvalidEscape` because `\z` is not a valid JSON escape.
+    InvalidEscape { character: char, position: usize },
+
+    /// A Unicode escape sequence (`\uXXXX`) is malformed or invalid.
+    ///
+    /// This occurs if the four characters following `\u` are not valid
+    /// hexadecimal digits.
+    ///
+    /// ### Example
+    /// Parsing `"\uGGGG"` results in `InvalidUnicode`.
+    InvalidUnicode { sequence: String, position: usize },
 }
 impl fmt::Display for JsonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
