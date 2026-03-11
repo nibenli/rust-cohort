@@ -132,7 +132,16 @@ impl<'a> Tokenizer<'a> {
                     extracted.push(self.parse_escape()?);
                 }
                 _ => {
-                    extracted.push(self.advance().unwrap());
+                    if b.is_ascii() {
+                        extracted.push(b as char);
+                        self.position += 1;
+                    } else {
+                        let c = self.advance().ok_or(JsonError::UnexpectedEndOfInput {
+                            expected: "\"".to_string(),
+                            position: start_pos,
+                        })?;
+                        extracted.push(c);
+                    }
                 }
             }
         }
@@ -183,7 +192,7 @@ impl<'a> Tokenizer<'a> {
         }
 
         let slice = &self.input[start..self.position];
-        let word = str::from_utf8(slice).unwrap_or("");
+        let word = str::from_utf8(slice).unwrap_or_default();
 
         match word {
             "true" => Ok(Token::Boolean(true, start_pos)),

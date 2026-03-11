@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList, PyTuple};
 use pyo3::{Bound, IntoPyObject, PyAny, PyErr};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::time::Instant;
 
 impl<'py> IntoPyObject<'py> for JsonValue {
@@ -166,16 +167,21 @@ pub fn dumps(obj: Bound<PyAny>, indent: Option<usize>) -> PyResult<String> {
 
 #[pyfunction]
 pub fn generate_json_with_size(size: usize) -> String {
-    let mut obj = String::from("{");
+    let mut obj = String::with_capacity(size);
+    obj.push('{');
+
     let mut i = 0;
-    while obj.len() < size - 10 {
-        // Leave room for closing
+    // Prevents the underflow panic/wrap
+    let limit = size.saturating_sub(10);
+
+    while obj.len() < limit {
         if i > 0 {
             obj.push_str(", ");
         }
-        obj.push_str(&format!("\"key_{i}\": {i}"));
+        let _ = write!(obj, "\"key_{i}\": {i}");
         i += 1;
     }
+
     obj.push('}');
     obj
 }
